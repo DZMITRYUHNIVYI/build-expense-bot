@@ -15,9 +15,14 @@ gc = gspread.authorize(credentials)
 sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
 
 def append_to_sheet(data):
-    row = [data.get("Дата"), data.get("Объект"), data.get("Категория"),
-           data.get("Сумма"), data.get("Комментарий"), data.get("Тип"), data.get("Ссылка на файл")]
-    sheet.append_row(row)
+    try:
+        row = [data.get("Дата"), data.get("Объект"), data.get("Категория"),
+               data.get("Сумма"), data.get("Комментарий"), data.get("Тип"), data.get("Ссылка на файл")]
+        print("📥 Добавление строки:", row)
+        sheet.append_row(row)
+    except Exception as e:
+        print("❌ Ошибка при добавлении строки в Google Таблицу:", str(e))
+        raise
 
 def upload_file_to_drive(file_path, file_name):
     service = build("drive", "v3", credentials=credentials)
