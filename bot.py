@@ -1,17 +1,21 @@
 import os
 import logging
-from telegram import Update, File
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, CommandHandler, filters
 from google_api import append_to_sheet, upload_file_to_drive
 from utils import process_voice, extract_file_info
 import datetime
 
 TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = "https://expense-bot-ful9.onrender.com/webhook"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Бот готов к работе. Отправьте сообщение, фото, PDF или голос.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_date = datetime.datetime.now().strftime("%d.%m.%Y")
@@ -48,6 +52,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.ALL, handle_message))
-    print("Bot is polling...")
-    app.run_polling()
+
+    # Устанавливаем webhook
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=WEBHOOK_URL
+    )
