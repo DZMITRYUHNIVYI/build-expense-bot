@@ -8,7 +8,6 @@ from utils import process_voice, extract_file_info
 import datetime
 
 TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = "https://expense-bot-ful9.onrender.com/webhook"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -16,7 +15,7 @@ logging.basicConfig(
 )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот готов. Отправьте сообщение, фото, PDF или голос.")
+    await update.message.reply_text("Бот работает. Отправьте сообщение, фото, PDF или голос.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -58,8 +57,5 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.ALL, handle_message))
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        webhook_url=WEBHOOK_URL
-    )
+    print("Bot is polling...")
+    app.run_polling()
