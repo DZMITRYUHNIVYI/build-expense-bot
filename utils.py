@@ -9,111 +9,30 @@ from pdfminer.high_level import extract_text
 async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return "[голос не используется]"
 
+# Сопоставление сотрудник → объект
 PERSON_TO_PROJECT = {
-    "hradouski andrei": "INGOLSTADT",
-    "siarhei vaskevich": "INGOLSTADT",
-    "siarhei peahko": "INGOLSTADT",
-    "pavel vaitushka": "INGOLSTADT",
-    "andrei padzialinski": "INGOLSTADT",
-    "uladzimir astapchuk": "INGOLSTADT",
-    "andrei palauchenia": "INGOLSTADT",
-    "ilya zhuk": "INGOLSTADT",
-    "siarhei khmurovich": "INGOLSTADT",
-    "stsiatsko anton": "INGOLSTADT",
-    "shatsila siarhei": "Tomaszewski Group (AACHEN)",
-    "kuliakin andrei": "Tomaszewski Group (AACHEN)",
-    "kazakevich siarhei": "Tomaszewski Group (AACHEN)",
-    "biadniuk piotr": "Tomaszewski Group (AACHEN)",
-    "markau aliaksandr": "Tomaszewski Group (AACHEN)",
-    "nechayeu ihar": "HLS",
-    "bychuk aleh": "HLS",
-    "kunitski vitali": "HLS",
-    "mikutksi valery": "HLS",
-    "makarau mikhail": "HLS",
-    "asipovich andrei": "HLS",
-    "kalesnikau aliaksei": "HLS",
-    "sinkevich yury": "HLS",
-    "matsukevich mikita": "Frankfurt Lüftung (FRA33)",
-    "mamedau andrei": "Frankfurt Lüftung (FRA33)",
-    "stepchuk dzmytro": "Frankfurt Lüftung (FRA33)",
-    "khvat artur": "Tomaszewski Group (Bochum)",
-    "buinavets vasili": "Tomaszewski Group (Bochum)",
-    "kazakevich vitali": "Tomaszewski Group (Bochum)",
-    "zasutski maksim": "Tomaszewski Group (Bochum)",
-    "sadouski dzmitry": "Tomaszewski Group (Bochum)",
-    "khojiev bokhodir": "Tomaszewski Group (Bochum)",
-    "pihaleu dzmitry": "Tomaszewski Group (Bochum)",
-    "palamarchyk oleksandr": "Tomaszewski Group (Bochum)",
-    "shutkevich pavial": "CAVERION (Dortmund)",
-    "chudzilouski dzianis": "CAVERION (Dortmund)",
-    "polak arkadiusz": "CAVERION (Dortmund)",
-    "tkach sergey": "PWConstruction Hamburg (Pavel)",
-    "lisicinas vadimas": "PWConstruction Hamburg (Pavel)",
-    "horbatiuk vasyl": "PWConstruction Hamburg (Pavel)",
-    "tarasenco serghei": "PWConstruction Hamburg (Pavel)",
-    "lewandowski marek": "PWConstruction Hamburg (Pavel)",
-    "rubtsevich pavel": "Frankfurt Lüftung (COLT)",
-    "navichenka mikita": "Frankfurt Lüftung (COLT)",
-    "nakladovich andrei": "Frankfurt Lüftung (COLT)",
-    "kirkevich siarhei": "Виктор 3",
-    "zharko ihar": "Виктор 3",
-    "haurylchuk viktar": "Виктор 3",
-    "amelka kiryl": "Виктор 3",
-    "maroz maksim": "Виктор 3",
-    "haurylchuk vlad": "Виктор 3",
-    "sharipov anatolii": "Виктор 3",
-    "kulak dzmitry": "Виктор 3",
-    "khaletski pavel": "Виктор 3",
-    "shchuka dzmitry": "Виктор 3",
-    "luchko aleh": "Виктор 3",
-    "yankouski dzmitry": "Виктор 3",
-    "yutskevich mikhail": "Виктор 3",
-    "vauchok stanislau": "Виктор 3",
-    "hutsko yury": "Виктор 3",
-    "vidlouski vitali": "Виктор 3",
-    "sviarhun andrei": "Виктор 3",
-    "siamionau siarhei": "REGENSBURG",
-    "barysau siarhei": "REGENSBURG",
-    "vereteyko aleksander": "REGENSBURG",
-    "marozau maksim": "REGENSBURG",
-    "prykhodzka yauhen": "REGENSBURG",
-    "dziazmyncki mikalai": "REGENSBURG",
-    "kaniashin ruslan": "REGENSBURG",
-    "sevastsyan siarhei": "REGENSBURG",
-    "dzewanouski uladzislau": "REGENSBURG",
-    "zenchyk dzmitry": "REGENSBURG",
-    "riazanov yevhenii": "REGENSBURG",
-    "sadouski siarhei": "REGENSBURG",
-    "zaleuski dzmitry": "REGENSBURG",
-    "lisai siarhei": "REGENSBURG",
-    "kalko dzmitry": "REGENSBURG",
-    "auseichyk maksim": "REGENSBURG",
-    "bolog sahos": "REGENSBURG",
-    "varadi oleksandr": "REGENSBURG",
-    "vasilchyk henadzi": "REGENSBURG",
-    "golubev igor": "REGENSBURG",
-    "tsybulski yury": "REGENSBURG",
-    "biareshchanka ihar": "REGENSBURG",
-    "vaseichyk vladislav": "REGENSBURG",
-    "shmyhaliou andrei": "REGENSBURG",
-    "saidashau viacheslau": "REGENSBURG",
-    "baihot aleh": "REGENSBURG",
-    "nerushau aliaksandr": "REGENSBURG",
-    "malak robert": "REGENSBURG",
-    "krasniatsou dzianis": "REGENSBURG",
-    "kulishevich dzmitry": "REGENSBURG",
-    "kadzevich maks": "REGENSBURG",
-    "drabovich raman": "REGENSBURG"
+    "shatila siarhei": "Tomaszewski Group (AACHEN)"
 }
 
+def normalize_name(name):
+    return name.lower().strip()
+
 def extract_amount(text):
-    match = re.search(r"(?:Total price[:\s]*EUR|EUR)\s*(\d+[.,]\d{2})", text, re.IGNORECASE)
+    match = re.search(r"(?:EUR\s*)?(\d+[.,]\d{2})(?:\s*EUR)?", text, re.IGNORECASE)
     return float(match.group(1).replace(",", ".")) if match else 0.0
 
 def extract_names(text):
+    blocked = {"Manage", "Direction", "Luggage", "Stra", "Terms", "General", "Hold", "Company", "Seat"}
     matches = re.findall(r"\b([A-Z][a-z]+\s[A-Z][a-z]+)\b", text)
-    blocked = {"Manage", "Direction", "Luggage", "Stra", "Terms", "General", "Hold"}
     return list({m for m in matches if all(b not in m for b in blocked)})
+
+def extract_route(text):
+    match = re.search(r"(Frankfurt|Klaipėda|Warsaw|Kaunas|Vilnius)[^\n]+?(→|\-\>|\sto\s)[^\n]+", text, re.IGNORECASE)
+    return match.group(0).replace("->", "→") if match else ""
+
+def extract_date(text):
+    match = re.search(r"(\d{2}[./-]\d{2}[./-]\d{4})", text)
+    return match.group(1).replace("/", ".").replace("-", ".") if match else ""
 
 def extract_text_from_pdf(path):
     return extract_text(path)
@@ -132,21 +51,24 @@ async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     if filename.endswith(".pdf"):
         text = extract_text_from_pdf(temp_path)
-        total = extract_amount(text)
         names = extract_names(text)
+        total = extract_amount(text)
+        route = extract_route(text)
+        trip_date = extract_date(text)
+
         count = max(len(names), 1)
         per_person = round(total / count, 2)
 
         for name in names:
-            norm = name.lower().strip()
+            norm = normalize_name(name)
             project = PERSON_TO_PROJECT.get(norm, "")
             row = {
-                "Дата": update.message.date.strftime("%d.%m.%Y"),
+                "Дата": trip_date,
                 "Объект": project,
                 "Сотрудник": name,
                 "Категория": "Билеты",
                 "Сумма (€)": per_person,
-                "Комментарий": "",
+                "Комментарий": f"FlixBus {route}" if route else "",
                 "Тип": "pdf",
                 "Ссылка на файл": file_url
             }
