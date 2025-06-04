@@ -16,6 +16,10 @@ async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if photo:
         file = await update.message.photo[-1].get_file()
         filename = f"photo_{update.message.message_id}.jpg"
+    if filename.endswith(".pdf"):
+    text = extract_text_from_pdf(temp_path)
+    info["amount"] = extract_amount(text)
+    info["person"] = extract_name(text)
     else:
         file = await update.message.document.get_file()
         filename = update.message.document.file_name
