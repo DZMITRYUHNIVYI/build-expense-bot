@@ -1,89 +1,74 @@
-import os
 import re
-from google_api import upload_file_to_drive, append_to_sheet
-from telegram import Update
-from telegram.ext import ContextTypes
-import tempfile
-from pdfminer.high_level import extract_text
+import fitz  # PyMuPDF
+import logging
+from datetime import datetime
+from google_utils import append_to_sheet, upload_file_to_drive
 
-async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return "[голос не используется]"
-
-# Сопоставление сотрудник → объект
 PERSON_TO_PROJECT = {
-    "shatila siarhei": "Tomaszewski Group (AACHEN)"
+    "elnur musaev": "Проект1",
+    "behbid behbidzade": "Проект1",
+    "ibrahim aghaev": "Проект1"
 }
 
-def normalize_name(name):
-    return name.lower().strip()
+logger = logging.getLogger(__name__)
 
-def extract_amount(text):
-    match = re.search(r"(?:EUR\s*)?(\d+[.,]\d{2})(?:\s*EUR)?", text, re.IGNORECASE)
-    return float(match.group(1).replace(",", ".")) if match else 0.0
+def parse_pdf_ticket(pdf_path):
+    with fitz.open(pdf_path) as doc:
+        text = "\n".join(page.get_text() for page in doc)
 
-def extract_names(text):
-    blocked = {"Manage", "Direction", "Luggage", "Stra", "Terms", "General", "Hold", "Company", "Seat"}
-    matches = re.findall(r"\b([A-Z][a-z]+\s[A-Z][a-z]+)\b", text)
-    return list({m for m in matches if all(b not in m for b in blocked)})
+    date = None
+    m_date = re.search(r'(\d{2}[./-]\d{2}[./-]\d{4})', text)
+    if m_date:
+        try:
+            date = datetime.strptime(m_date.group(1), "%d.%m.%Y").date()
+        except ValueError:
+            logger.error(f"Invalid date format: {m_date.group(1)}")
 
-def extract_route(text):
-    match = re.search(r"(Frankfurt|Klaipėda|Warsaw|Kaunas|Vilnius)[^\n]+?(→|\-\>|\sto\s)[^\n]+", text, re.IGNORECASE)
-    return match.group(0).replace("->", "→") if match else ""
+    names = []
+    for line in text.splitlines():
+        m = re.match(r"^([A-Z][a-z]+\s[A-Z][a-z]+)(\s+\d+|\s+·)?", line)
+        if m:
+            names.append(m.group(1).strip())
 
-def extract_date(text):
-    match = re.search(r"(\d{2}[./-]\d{2}[./-]\d{4})", text)
-    return match.group(1).replace("/", ".").replace("-", ".") if match else ""
+    names = list(set(names))
 
-def extract_text_from_pdf(path):
-    return extract_text(path)
+    total_price = None
+    m_price = re.search(r'Total price[:\s]*EUR\s*([\d\.,]+)', text)
+    if m_price:
+        total_price = float(m_price.group(1).replace(',', '.'))
 
-async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, photo=False):
-    if photo:
-        file = await update.message.photo[-1].get_file()
-        filename = f"photo_{update.message.message_id}.jpg"
-    else:
-        file = await update.message.document.get_file()
-        filename = update.message.document.file_name
+    route = None
+    m_route = re.search(r'([A-Za-z]+)\s*(→|->|to)\s*([A-Za-z]+)', text)
+    if m_route:
+        route = f"{m_route.group(1)} → {m_route.group(3)}"
 
-    temp_path = f"/tmp/{filename}"
-    await file.download_to_drive(temp_path)
-    file_url = upload_file_to_drive(temp_path, filename)
+    return date, names, total_price, route
 
-    if filename.endswith(".pdf"):
-        text = extract_text_from_pdf(temp_path)
-        names = extract_names(text)
-        total = extract_amount(text)
-        route = extract_route(text)
-        trip_date = extract_date(text)
+def process_ticket_file(pdf_path, spreadsheet_id):
+    date, names, total_price, route = parse_pdf_ticket(pdf_path)
+    if not names or total_price is None or date is None:
+        logger.error(f"Skipping file {pdf_path}: missing data")
+        return None
 
-        count = max(len(names), 1)
-        per_person = round(total / count, 2)
+    drive_link = upload_file_to_drive(pdf_path)
+    comment = f"FlixBus {route}" if route else "FlixBus"
+    per_person = round(total_price / len(names), 2)
 
-        for name in names:
-            norm = normalize_name(name)
-            project = PERSON_TO_PROJECT.get(norm, "")
-            row = {
-                "Дата": trip_date,
-                "Объект": project,
-                "Сотрудник": name,
-                "Категория": "Билеты",
-                "Сумма (€)": per_person,
-                "Комментарий": f"FlixBus {route}" if route else "",
-                "Тип": "pdf",
-                "Ссылка на файл": file_url
-            }
-            append_to_sheet(row)
-
-        return {
-            "url": file_url,
-            "name": filename,
-            "amount": total,
-            "person": ", ".join(names)
-        }
-
-    return {
-        "url": file_url,
-        "name": filename,
-        "amount": "",
-        "person": ""
-    }
+    for name in names:
+        key = name.lower()
+        project = PERSON_TO_PROJECT.get(key)
+        if not project:
+            logger.warning(f"No project for {name}")
+            continue
+        row = [
+            date.strftime("%d.%m.%Y"),
+            project,
+            name,
+            "Билеты",
+            per_person,
+            comment,
+            "pdf",
+            drive_link
+        ]
+        append_to_sheet(spreadsheet_id, row)
+    return drive_link
