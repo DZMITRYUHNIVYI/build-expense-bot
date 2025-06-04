@@ -4,7 +4,7 @@ from google_api import upload_file_to_drive
 from telegram import Update
 from telegram.ext import ContextTypes
 import tempfile
-import fitz  # PyMuPDF
+from pdfminer.high_level import extract_text
 
 async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     voice = await update.message.voice.get_file()
@@ -23,10 +23,7 @@ def extract_name(text):
     return match.group(1) if match else ""
 
 def extract_text_from_pdf(path):
-    text = ""
-    with fitz.open(path) as doc:
-        for page in doc:
-            text += page.get_text()
+    text = extract_text(path)
     print("📄 Извлечённый текст из PDF:", text[:300], "..." if len(text) > 300 else "")
     return text
 
@@ -53,3 +50,5 @@ async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         text = extract_text_from_pdf(temp_path)
         info["amount"] = extract_amount(text)
         info["person"] = extract_name(text)
+
+    return info
