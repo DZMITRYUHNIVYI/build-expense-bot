@@ -1,6 +1,6 @@
 import os
 import re
-from google_api import upload_file_to_drive
+from google_api import upload_file_to_drive, append_to_sheet
 from telegram import Update
 from telegram.ext import ContextTypes
 import tempfile
@@ -13,18 +13,16 @@ async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return "[распознанный текст из аудио]"
 
 def extract_amount(text):
-    match = re.search(r"(\d+[.,]\d{2})", text)
-    print("🔍 Поиск суммы. Найдено:", match.group(1) if match else "ничего")
-    return match.group(1).replace(",", ".") if match else ""
+    match = re.search(r"(?:Total price[:\s]*EUR|EUR)\s*(\d+[.,]\d{2})", text, re.IGNORECASE)
+    return float(match.group(1).replace(",", ".")) if match else 0.0
 
-def extract_name(text):
-    match = re.search(r"([A-Z][a-z]+\s[A-Z][a-z]+)", text)
-    print("🔍 Поиск имени. Найдено:", match.group(1) if match else "ничего")
-    return match.group(1) if match else ""
+def extract_names(text):
+    matches = re.findall(r"([A-Z][a-z]+\s[A-Z][a-z]+)", text)
+    return list(set(matches))
 
 def extract_text_from_pdf(path):
     text = extract_text(path)
-    print("📄 Извлечённый текст из PDF:", text[:300], "..." if len(text) > 300 else "")
+    print("📄 Извлечённый текст из PDF:", text[:500], "..." if len(text) > 500 else "")
     return text
 
 async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, photo=False):
@@ -39,16 +37,37 @@ async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     await file.download_to_drive(temp_path)
     file_url = upload_file_to_drive(temp_path, filename)
 
-    info = {
-        "url": file_url,
-        "name": filename,
-        "amount": "",
-        "person": ""
-    }
-
     if filename.endswith(".pdf"):
         text = extract_text_from_pdf(temp_path)
-        info["amount"] = extract_amount(text)
-        info["person"] = extract_name(text)
+        total = extract_amount(text)
+        names = extract_names(text)
+        print(f"✅ Найдено имён: {names}, сумма: {total}")
 
-    return info
+        count = max(len(names), 1)
+        per_person = round(total / count, 2) if count else 0.0
+
+        for name in names:
+            row = {
+                "Дата": update.message.date.strftime("%d.%m.%Y"),
+                "Объект": "",
+                "Категория": "Билеты",
+                "Сумма": per_person,
+                "Комментарий": name,
+                "Тип": "pdf",
+                "Ссылка на файл": file_url
+            }
+            append_to_sheet(row)
+
+        return {
+            "url": file_url,
+            "name": filename,
+            "amount": total,
+            "person": ", ".join(names)
+        }
+    else:
+        return {
+            "url": file_url,
+            "name": filename,
+            "amount": "",
+            "person": ""
+        }
