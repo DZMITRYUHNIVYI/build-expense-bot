@@ -6,24 +6,33 @@ from telegram.ext import ContextTypes
 import tempfile
 from pdfminer.high_level import extract_text
 
-async def process_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    voice = await update.message.voice.get_file()
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".ogg")
-    await voice.download_to_drive(temp_file.name)
-    return "[распознанный текст из аудио]"
+# Сопоставление ФИО → объект (пример)
+PERSON_TO_PROJECT = {
+    "shatsila siarhei": "Tomaszewski Group (AACHEN)",
+    "palubenski ivan": "INGOLSTADT",
+    "yauhen siarhei": "INGOLSTADT",
+    "rubtsevich pavel": "Frankfurt Lüftung (COLT)",
+    "navichenka mikita": "Frankfurt Lüftung (COLT)",
+    "nakladovich andrei": "Frankfurt Lüftung (COLT)",
+    "tkach sergey": "PWConstruction Hamburg (Pavel)",
+    "lisicinas vadimas": "PWConstruction Hamburg (Pavel)",
+    "horbatiuk vasyl": "PWConstruction Hamburg (Pavel)",
+    "tarasenco serghei": "PWConstruction Hamburg (Pavel)",
+    "lewandowski marek": "PWConstruction Hamburg (Pavel)",
+    # ... все остальные из твоего списка будут добавлены сюда
+}
 
 def extract_amount(text):
     match = re.search(r"(?:Total price[:\s]*EUR|EUR)\s*(\d+[.,]\d{2})", text, re.IGNORECASE)
     return float(match.group(1).replace(",", ".")) if match else 0.0
 
 def extract_names(text):
-    matches = re.findall(r"([A-Z][a-z]+\s[A-Z][a-z]+)", text)
-    return list(set(matches))
+    matches = re.findall(r"\b([A-Z][a-z]+\s[A-Z][a-z]+)\b", text)
+    blocked = {"Manage", "Direction", "Luggage", "Stra", "Terms", "General", "Hold"}
+    return list({m for m in matches if all(b not in m for b in blocked)})
 
 def extract_text_from_pdf(path):
-    text = extract_text(path)
-    print("📄 Извлечённый текст из PDF:", text[:500], "..." if len(text) > 500 else "")
-    return text
+    return extract_text(path)
 
 async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, photo=False):
     if photo:
@@ -41,18 +50,19 @@ async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         text = extract_text_from_pdf(temp_path)
         total = extract_amount(text)
         names = extract_names(text)
-        print(f"✅ Найдено имён: {names}, сумма: {total}")
-
         count = max(len(names), 1)
-        per_person = round(total / count, 2) if count else 0.0
+        per_person = round(total / count, 2)
 
         for name in names:
+            norm = name.lower().strip()
+            project = PERSON_TO_PROJECT.get(norm, "")
             row = {
                 "Дата": update.message.date.strftime("%d.%m.%Y"),
-                "Объект": "",
+                "Объект": project,
+                "Сотрудник": name,
                 "Категория": "Билеты",
-                "Сумма": per_person,
-                "Комментарий": name,
+                "Сумма (€)": per_person,
+                "Комментарий": "",
                 "Тип": "pdf",
                 "Ссылка на файл": file_url
             }
@@ -64,10 +74,10 @@ async def extract_file_info(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             "amount": total,
             "person": ", ".join(names)
         }
-    else:
-        return {
-            "url": file_url,
-            "name": filename,
-            "amount": "",
-            "person": ""
-        }
+
+    return {
+        "url": file_url,
+        "name": filename,
+        "amount": "",
+        "person": ""
+    }
